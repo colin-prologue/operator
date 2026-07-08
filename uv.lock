@@ -355,6 +355,12 @@ source = { editable = "packages/registry" }
 name = "operator-router"
 version = "0.1.0"
 source = { editable = "packages/router" }
+dependencies = [
+    { name = "operator-registry" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "operator-registry", editable = "packages/registry" }]
 
 [[package]]
 name = "operator-switchboard-mcp"
