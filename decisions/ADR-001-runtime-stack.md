@@ -233,8 +233,10 @@ today, but flips if any of these become true:
 
 ## Action items
 
-1. [ ] Scaffold the monorepo as a uv workspace (`packages/router`,
-   `registry`, `switchboard-mcp`, `desktop-adapter`, `console`).
+1. [ ] Scaffold the monorepo as a uv workspace with all five packages under
+   `packages/`: `packages/router`, `packages/registry`,
+   `packages/switchboard-mcp`, `packages/desktop-adapter`,
+   `packages/console` (per the kickoff spec's layout).
 2. [ ] Pin `mcp` to v1.28.x; add a dated re-check of v2 stability to the
    Gate 0 review agenda.
 3. [ ] Desktop adapter: PyObjC + CGEventPost, one file, smoke test per the
