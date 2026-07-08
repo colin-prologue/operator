@@ -57,6 +57,10 @@ class SurfaceRegistry:
         res = self.resolve(old)
         if res.surface is None:
             raise KeyError(old)
+        if res.surface.name == new:
+            return res.surface
+        if self._path(new).exists():
+            raise ValueError(f"surface {new!r} already exists")
         renamed = Surface(**{**res.surface.to_dict(), "name": new})
         self.register(renamed)
         self._path(res.surface.name).unlink()

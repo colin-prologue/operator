@@ -74,3 +74,22 @@ def test_invalid_kind_or_profile_rejected(tmp_path: Path):
     with pytest.raises(ValueError):
         Surface(name="x", kind="chat", address="a", digest="d",
                 profile="corporate", registered_at="2026-07-08T00:00:00+00:00")
+
+
+def test_rename_to_same_name_is_a_safe_noop(tmp_path: Path):
+    reg = SurfaceRegistry(tmp_path)
+    reg.register(make("proxy-pilot", "chat"))
+    result = reg.rename("proxy-pilot", "proxy-pilot")
+    assert result.name == "proxy-pilot"
+    assert reg.resolve("proxy-pilot").surface is not None
+
+
+def test_rename_onto_existing_surface_refuses(tmp_path: Path):
+    reg = SurfaceRegistry(tmp_path)
+    reg.register(make("alpha", "chat"))
+    reg.register(make("beta", "tmux"))
+    with pytest.raises(ValueError, match="already exists"):
+        reg.rename("alpha", "beta")
+    # both survive untouched
+    assert reg.resolve("alpha").surface.kind == "chat"
+    assert reg.resolve("beta").surface.kind == "tmux"
