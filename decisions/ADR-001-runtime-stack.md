@@ -1,6 +1,6 @@
 # ADR-001: Runtime stack — Python 3.12+ / asyncio
 
-**Status:** Proposed
+**Status:** Accepted (PR #1 merged 2026-07-08)
 **Date:** 2026-07-07
 **Deciders:** Colin
 
