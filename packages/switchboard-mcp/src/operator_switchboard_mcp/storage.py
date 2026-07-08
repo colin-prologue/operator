@@ -91,21 +91,29 @@ class CorpusStore:
         return {"name": name, "lane": lane, "revision": meta["revision"],
                 "body": body}
 
-    def _apply_token(self, meta: dict, token: str) -> str:
-        """Returns 'applied' | 'already_applied'; raises StaleTokenError."""
+    def _apply_token(self, meta: dict, token: str, already_satisfied: bool) -> str:
+        """Returns 'applied' | 'already_applied'; raises StaleTokenError.
+
+        Tokens only encode the revision read, not which operation was
+        requested, so two different in-flight requests that both read the
+        same revision carry the identical token. `already_satisfied` (does
+        the record's current state already reflect what THIS request is
+        asking for) disambiguates a genuine idempotent replay of the
+        winning request from a different, losing request that must abort
+        stale instead of being silently swallowed as a no-op."""
         if not self._TOKEN_RE.match(token or ""):
             raise StaleTokenError(meta["revision"])
         current = f"rev{meta['revision']}"
         if token == current:
             return "applied"
-        if token == meta.get("last_applied_token"):
+        if already_satisfied and token == meta.get("last_applied_token"):
             return "already_applied"
         raise StaleTokenError(meta["revision"])
 
     def ticket_transition(self, name: str, to_lane: str, token: str) -> dict:
         src, lane = self._find_ticket(name)
         meta, body = _parse(src.read_text())
-        status = self._apply_token(meta, token)
+        status = self._apply_token(meta, token, already_satisfied=(lane == to_lane))
         if status == "already_applied":
             return {"status": status, "revision": meta["revision"]}
         meta["revision"] += 1
@@ -147,7 +155,7 @@ class CorpusStore:
         if not p.exists():
             raise KeyError(f"no gate named {name!r}")
         meta, body = _parse(p.read_text())
-        status = self._apply_token(meta, token)
+        status = self._apply_token(meta, token, already_satisfied=(meta["state"] == state))
         if status == "already_applied":
             return {"status": status, "revision": meta["revision"]}
         meta["revision"] += 1

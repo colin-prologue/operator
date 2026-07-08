@@ -109,7 +109,7 @@ async def test_gc8_unclassified_op_refused_as_class_x(bench):
 
     ran = []
 
-    async def run(m):
+    async def run(m, token):
         ran.append(1)
         return "poked"
 

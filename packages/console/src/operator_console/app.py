@@ -49,6 +49,14 @@ async def run_console(root: Path, profile: str, no_llm: bool = False,
                     continue
                 if text in ("exit", "quit"):
                     break
-                reply = await router.handle(text)
+                try:
+                    reply = await router.handle(text)
+                except Exception as e:
+                    # router.handle already turn-logged the error; keep the
+                    # REPL alive rather than letting one bad tool call kill
+                    # the console session.
+                    stdout.write(f"error: {e}\n")
+                    stdout.flush()
+                    continue
                 stdout.write(reply + "\n")
                 stdout.flush()

@@ -46,8 +46,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
     """The bench vocabulary: deterministic patterns -> classified ops.
 
     `context` is the RouterContext (for the profile flag on registered
-    surfaces); it may be attached after Router construction via
-    `attach_context`."""
+    surfaces); it may be `None` (defaults to the "personal" profile)."""
 
     holder = {"context": context}
 
@@ -63,7 +62,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
             readback=readback, run=run, token_fetch=token_fetch))
 
     # --- surfaces (local registry ops) --------------------------------
-    async def run_register(m):
+    async def run_register(m, token):
         registry.register(Surface(
             name=m["name"], kind=m["kind"], address=m["address"],
             digest="registered via console", profile=profile(),
@@ -78,7 +77,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         r"^register (?P<kind>chat|cowork|code|tmux) (?P<name>[\w-]+) at (?P<address>\S+)$",
         run_register, rb_register)
 
-    async def run_list_surfaces(m):
+    async def run_list_surfaces(m, token):
         surfaces = registry.list()
         if not surfaces:
             return "No surfaces registered."
@@ -86,25 +85,50 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
 
     add("surface_list", "list surfaces", r"^list surfaces$", run_list_surfaces)
 
-    async def run_kill(m):
-        registry.kill(m["name"])
-        return f"Killed surface {m['name']}."
+    def normalize_surface_name(name: str) -> str:
+        # mirrors SurfaceRegistry.resolve's own spoken-style normalization
+        return name.strip().lower().replace(" ", "-")
+
+    async def run_kill(m, token):
+        # double-check existence: the surface may have been killed
+        # out-of-band between arm and confirm.
+        res = registry.resolve(m["name"])
+        if res.surface is None:
+            return f"No surface named {m['name']!r} is registered."
+        registry.kill(res.surface.name)
+        return f"Killed surface {res.surface.name}."
 
     async def rb_kill(m):
         res = registry.resolve(m["name"])
-        found = res.surface.name if res.surface else m["name"]
-        return (f"Killing surface {found} — this removes its registration "
-                f"entirely. Say \"confirm kill {found}\".")
+        normalized = normalize_surface_name(m["name"])
+        if res.surface is not None:
+            if res.surface.name == normalized:
+                found = res.surface.name
+                return (f"Killing surface {found} — this removes its "
+                        f"registration entirely. Say \"confirm kill {found}\".")
+            # fuzzy match diverges from the typed name: refuse to arm so
+            # the armed label always names the exact resolved target
+            # (grammar principle 2), and make the user re-issue verbatim.
+            return (f"[no-arm] Did you mean {res.surface.name}? "
+                    f"Say \"kill {res.surface.name}\".")
+        if res.candidates:
+            return "[no-arm] Which one: " + ", ".join(res.candidates) + "?"
+        return f"[no-arm] No surface named {m['name']!r} is registered."
 
-    # Class X label carries the target name (grammar: names the operation)
+    # Class X label carries the target name (grammar: names the operation).
+    # label_for can't itself resolve (it's sync, no registry round-trip
+    # needed): it normalizes the same way SurfaceRegistry.resolve does for
+    # exact/normalized matches, which is exactly the case rb_kill arms for
+    # -- fuzzy matches never arm (see the "[no-arm]" branch above), so the
+    # armed label always names the exact resolved target.
     entries.append(CatalogueEntry(
         op_name="surface_kill", label="kill",
         pattern=re.compile(r"^kill (?P<name>[\w-]+)$"),
         readback=rb_kill, run=run_kill, token_fetch=None,
-        label_for=lambda m: f"kill {m['name']}"))
+        label_for=lambda m: f"kill {normalize_surface_name(m['name'])}"))
 
     # --- tickets (over MCP) --------------------------------------------
-    async def run_ticket_list(m):
+    async def run_ticket_list(m, token):
         lane = m.groupdict().get("lane")
         tickets = await bridge.call("ticket_list",
                                     {"lane": lane} if lane else {})
@@ -116,7 +140,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
     add("ticket_list", "list tickets",
         r"^list tickets(?: in (?P<lane>[\w-]+))?$", run_ticket_list)
 
-    async def run_ticket_read(m):
+    async def run_ticket_read(m, token):
         t = await bridge.call("ticket_read", {"name": m["name"]})
         return (f"{t['name']} [{t['lane']} rev{t['revision']}]\n{t['body']}")
 
@@ -132,11 +156,12 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         return (f"Moving {m['name']} from {t['lane']} to {m['lane']} "
                 f"(rev{t['revision']}). Say \"confirm move\".")
 
-    async def run_move(m):
-        t = await bridge.call("ticket_read", {"name": m["name"]})
+    async def run_move(m, token):
+        # submit the token captured at read-back time — NOT a fresh read —
+        # so a record that moved under the read-back aborts stale instead
+        # of being silently re-applied against the current revision.
         result = await bridge.call("ticket_transition", {
-            "name": m["name"], "to_lane": m["lane"],
-            "token": f"rev{t['revision']}"})
+            "name": m["name"], "to_lane": m["lane"], "token": token})
         if result.get("status") == "applied":
             return f"Done — {m['name']} is in {m['lane']}."
         if result.get("status") == "already_applied":
@@ -153,7 +178,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         return (f"Attaching your comment to {m['name']}: "
                 f"“{m['body'][:80]}”. Say \"confirm comment\".")
 
-    async def run_comment(m):
+    async def run_comment(m, token):
         await bridge.call("ticket_comment",
                           {"name": m["name"], "body": m["body"]})
         return f"Comment attached to {m['name']}."
@@ -163,7 +188,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         run_comment, rb_comment)
 
     # --- gates -----------------------------------------------------------
-    async def run_gate_read(m):
+    async def run_gate_read(m, token):
         g = await bridge.call("gate_read", {"name": m["name"]})
         return f"Gate {g['name']} is {g['state']} at revision {g['revision']}."
 
@@ -181,12 +206,13 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         g = await bridge.call("gate_read", {"name": m["name"]})
         return f"rev{g['revision']}"
 
-    async def run_stamp(m):
-        g = await bridge.call("gate_read", {"name": m["name"]})
+    async def run_stamp(m, token):
         state = m.groupdict().get("state") or "approved"
+        # submit the token captured at read-back time — NOT a fresh read —
+        # so a gate that moved under the read-back aborts stale instead of
+        # being silently re-applied against the current revision.
         result = await bridge.call("gate_stamp", {
-            "name": m["name"], "state": state,
-            "token": f"rev{g['revision']}"})
+            "name": m["name"], "state": state, "token": token})
         if result.get("status") == "applied":
             return (f"Stamped. {m['name']} {state} at revision "
                     f"{result['revision']}.")
@@ -204,7 +230,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         label_for=lambda m: f"gate {m['name']}"))
 
     # --- corpus search ---------------------------------------------------
-    async def run_query(m):
+    async def run_query(m, token):
         hits = await bridge.call("corpus_query", {"text": m["text"]})
         if not hits:
             return "Nothing in the corpus matches."
@@ -213,8 +239,3 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
     add("corpus_query", "search", r"^search for (?P<text>.+)$", run_query)
 
     return entries
-
-
-def attach_context(entries_holder_context, context) -> None:
-    """Late-bind the RouterContext into the catalogue's profile closure."""
-    entries_holder_context["context"] = context

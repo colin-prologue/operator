@@ -65,7 +65,7 @@ async def test_profile_switch_is_sticky_and_logged(tmp_path):
 async def test_class_r_tool_runs_without_confirmation(tmp_path):
     ran = []
 
-    async def run(m):
+    async def run(m, token):
         ran.append(1)
         return "two tickets in backlog"
 
@@ -82,9 +82,11 @@ async def test_class_r_tool_runs_without_confirmation(tmp_path):
 
 async def test_class_c_tool_demands_keyword_confirmation(tmp_path):
     ran = []
+    tokens = []
 
-    async def run(m):
+    async def run(m, token):
         ran.append(1)
+        tokens.append(token)
         return "moved"
 
     async def readback(m):
@@ -102,6 +104,7 @@ async def test_class_c_tool_demands_keyword_confirmation(tmp_path):
     assert (await router.handle("yes")) != "moved" and ran == []   # inert
     reply = await router.handle("confirm move")
     assert reply == "moved" and ran == [1]
+    assert tokens == [None]   # entry has no token_fetch -> armed token is None
 
 
 async def test_unclassified_op_is_refused_as_class_x(tmp_path):
@@ -109,7 +112,7 @@ async def test_unclassified_op_is_refused_as_class_x(tmp_path):
     demanded), even with no explicit read-back builder."""
     ran = []
 
-    async def run(m):
+    async def run(m, token):
         ran.append(1)
         return "launched"
 
@@ -125,7 +128,7 @@ async def test_unclassified_op_is_refused_as_class_x(tmp_path):
 
 
 async def test_cancel_while_awaiting_aborts_arm(tmp_path):
-    async def run(m):
+    async def run(m, token):
         return "moved"
 
     async def readback(m):
@@ -144,7 +147,7 @@ async def test_cancel_while_awaiting_aborts_arm(tmp_path):
 
 
 async def test_dispatch_exception_still_logs_the_turn(tmp_path):
-    async def boom(m):
+    async def boom(m, token):
         raise RuntimeError("kaboom")
 
     opreg = OperationRegistry()

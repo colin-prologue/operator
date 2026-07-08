@@ -11,6 +11,10 @@ from operator_router.llm import LLMFallback
 from operator_router.toolrouter import CatalogueEntry, match_tool
 from operator_router.turnlog import TurnLog
 
+# CatalogueEntry.readback may return a string prefixed with this sentinel to
+# refuse arming (see toolrouter.CatalogueEntry docstring).
+NO_ARM_SENTINEL = "[no-arm] "
+
 
 @dataclass
 class RouterContext:
@@ -94,10 +98,10 @@ class Router:
             return f"No surface named {args['name']!r} is registered."
         if intent == "profile_work":
             self.context.profile = "work"
-            return "Work profile active. Sticky until you switch back."
+            return "Work profile active. Sticky until you switch back." + self._profile_switch_caveat()
         if intent == "profile_personal":
             self.context.profile = "personal"
-            return "Personal profile active."
+            return "Personal profile active." + self._profile_switch_caveat()
         if intent == "mode_command":
             self.context.mode = "command"
             return "Command mode."
@@ -109,10 +113,19 @@ class Router:
                     f"profile: {self.context.profile} · mode: {self.context.mode}.")
         return f"Acknowledged: {intent}."
 
+    def _profile_switch_caveat(self) -> str:
+        # documented restriction (LOG-001 wart 15): the switchboard MCP
+        # server is spawned once with a fixed --profile, so a mid-session
+        # profile switch here doesn't change which profile corpus writes
+        # land under until the console restarts.
+        if not self.catalogue:
+            return ""
+        return " Note: the switchboard session keeps its launch profile until restart."
+
     async def _execute_classified(self, entry: CatalogueEntry, m, now: float) -> str:
         cls = self.opreg.classify(entry.op_name)
         if cls is OpClass.R:
-            return await entry.run(m)
+            return await entry.run(m, None)
         # C / G / X (and unassigned -> X): read-back then AWAITING
         label = entry.label_for(m) if entry.label_for else entry.label
         token = await entry.token_fetch(m) if entry.token_fetch else None
@@ -123,8 +136,13 @@ class Router:
                         f"{' (unclassified — defaulting to X)' if not self.opreg.is_assigned(entry.op_name) else ''}."
                         f' Say "confirm {label}".')
 
+        # a readback can refuse to arm at all (e.g. target failed to
+        # resolve) via the "[no-arm] " sentinel — see CatalogueEntry.readback
+        if readback.startswith(NO_ARM_SENTINEL):
+            return readback[len(NO_ARM_SENTINEL):]
+
         async def execute() -> str:
-            return await entry.run(m)
+            return await entry.run(m, token)
 
         return self.machine.arm(
             ArmedOp(label=label, op_name=entry.op_name, op_class=cls,
