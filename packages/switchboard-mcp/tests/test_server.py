@@ -48,3 +48,22 @@ async def test_stdio_roundtrip_lists_tools_and_moves_a_ticket(corpus_root):
                 {"name": "cache-concurrency", "to_lane": "needs-review",
                  "token": "rev0"})
             assert json.loads(replay.content[0].text)["status"] == "already_applied"
+
+
+async def test_unknown_names_return_structured_errors(corpus_root):
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "operator_switchboard_mcp",
+              "--root", str(corpus_root), "--profile", "personal"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("ticket_read", {"name": "ghost"})
+            payload = json.loads(result.content[0].text)
+            assert payload["status"] == "error"
+            assert "ghost" in payload["message"]
+            result = await session.call_tool(
+                "ticket_transition",
+                {"name": "ghost", "to_lane": "done", "token": "rev0"})
+            assert json.loads(result.content[0].text)["status"] == "error"
