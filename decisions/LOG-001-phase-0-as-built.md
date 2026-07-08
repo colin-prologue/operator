@@ -85,6 +85,13 @@ as-built deltas are in the decision log").
     for (same `to_lane` / same gate `state`); a genuinely different,
     losing request now correctly raises `StaleTokenError`.
 
+17. **Case-sensitive exact resolve.** A surface registered with uppercase
+    (`MyBot`) is not found by its lowercase form (`kill mybot`) — the
+    registry's exact/candidate matching is case-sensitive while spoken
+    input normalizes to lowercase. Fails safe (refusal, never a wrong
+    target), but STT input is typically lowercase; normalize stored names
+    or comparisons in Phase 1.
+
 ## Outstanding manual item
 
 - **Goal condition 6** (desktop adapter smoke against real Claude
