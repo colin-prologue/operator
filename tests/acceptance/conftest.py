@@ -77,7 +77,24 @@ async def bench(corpus_root):
                 await stop.wait()
 
     task = asyncio.create_task(lifecycle())
-    await ready.wait()
+    ready_waiter = asyncio.create_task(ready.wait())
+    done, _ = await asyncio.wait(
+        {ready_waiter, task}, timeout=30.0,
+        return_when=asyncio.FIRST_COMPLETED)
+    if task in done:
+        ready_waiter.cancel()
+        exc = task.exception()
+        raise RuntimeError("bench MCP lifecycle failed during setup") from exc
+    if not done:
+        ready_waiter.cancel()
+        task.cancel()
+        raise RuntimeError("bench MCP lifecycle setup timed out after 30s")
+
     yield box
+
     stop.set()
-    await task
+    try:
+        await asyncio.wait_for(task, timeout=15.0)
+    except asyncio.TimeoutError:
+        task.cancel()
+        raise RuntimeError("bench MCP lifecycle teardown timed out after 15s")
