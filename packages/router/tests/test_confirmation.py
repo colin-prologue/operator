@@ -82,3 +82,11 @@ def test_new_arm_drops_pending_op():
 def test_idle_machine_passes_everything():
     m = ConfirmationMachine()
     assert m.handle("confirm move", now=0.0).kind == "pass"
+
+
+def test_new_arm_announces_the_drop():
+    m = ConfirmationMachine()
+    m.arm(arm_op("move"), now=0.0)
+    rb = m.arm(arm_op("send"), now=1.0)
+    assert rb.startswith("Dropping the pending move.")
+    assert 'confirm send' in rb

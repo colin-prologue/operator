@@ -39,10 +39,14 @@ class ConfirmationMachine:
         return "AWAITING" if self._armed is not None else "IDLE"
 
     def arm(self, op: ArmedOp, now: float) -> str:
-        # one armed op at a time; a new confirmable request drops the pending one
+        # one armed op at a time; a new confirmable request explicitly
+        # drops the pending one before its own read-back (grammar spec)
+        notice = ""
+        if self._armed is not None:
+            notice = f"Dropping the pending {self._armed.label}. "
         self._armed = op
         self._armed_at = now
-        return op.readback
+        return notice + op.readback
 
     def handle(self, text: str, now: float) -> Outcome:
         if self._armed is None:

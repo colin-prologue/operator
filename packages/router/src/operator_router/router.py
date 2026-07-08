@@ -40,13 +40,20 @@ class Router:
 
     async def handle(self, text: str) -> str:
         start = self._clock()
-        tier, reply = await self._dispatch(text)
-        self.turnlog.append(
-            profile=self.context.profile, surface=self.context.surface,
-            tier=tier, latency_ms=(self._clock() - start) * 1000.0,
-            input_preview=text, outcome="ok",
-        )
-        return reply
+        tier, outcome = 0, "error"
+        try:
+            tier, reply = await self._dispatch(text)
+            outcome = "ok"
+            return reply
+        except Exception as e:
+            outcome = f"error:{type(e).__name__}"
+            raise
+        finally:
+            self.turnlog.append(
+                profile=self.context.profile, surface=self.context.surface,
+                tier=tier, latency_ms=(self._clock() - start) * 1000.0,
+                input_preview=text, outcome=outcome,
+            )
 
     async def _dispatch(self, text: str) -> tuple[int, str]:
         now = self._clock()

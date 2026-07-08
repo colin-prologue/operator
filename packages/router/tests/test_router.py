@@ -141,3 +141,20 @@ async def test_cancel_while_awaiting_aborts_arm(tmp_path):
     reply = await router.handle("cancel")
     assert "dropped" in reply.lower()
     assert (await router.handle("confirm move")) != "moved"
+
+
+async def test_dispatch_exception_still_logs_the_turn(tmp_path):
+    async def boom(m):
+        raise RuntimeError("kaboom")
+
+    opreg = OperationRegistry()
+    opreg.assign("exploding_op", OpClass.R)
+    entry = CatalogueEntry(op_name="exploding_op", label="explode",
+                           pattern=re.compile(r"^explode$"),
+                           readback=None, run=boom, token_fetch=None)
+    router, llm, log = build(tmp_path, catalogue=[entry], opreg=opreg)
+    with pytest.raises(RuntimeError):
+        await router.handle("explode")
+    line = log.lines()[-1]
+    assert line["outcome"] == "error:RuntimeError"
+    assert line["profile"] == "personal"
