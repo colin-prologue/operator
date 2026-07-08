@@ -3,7 +3,7 @@ name = "operator-desktop-adapter"
 version = "0.1.0"
 description = "Deep-link dispatch + send seam"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pyobjc-framework-Quartz>=10; sys_platform == 'darwin'"]
 
 [build-system]
 requires = ["hatchling"]

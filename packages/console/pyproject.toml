@@ -3,7 +3,17 @@ name = "operator-console"
 version = "0.1.0"
 description = "Text frontend"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "operator-registry",
+    "operator-router",
+    "operator-switchboard-mcp",
+    "mcp~=1.28.1",
+]
+
+[tool.uv.sources]
+operator-registry = { workspace = true }
+operator-router = { workspace = true }
+operator-switchboard-mcp = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
