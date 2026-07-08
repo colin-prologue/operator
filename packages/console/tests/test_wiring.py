@@ -68,7 +68,7 @@ async def test_full_bench_flow_over_real_mcp(corpus_root):
                 "register tmux build-box at tmux:main")
             assert "confirm register" in r1
             await router.handle("confirm register")
-            r2 = await router.handle(
+            await router.handle(
                 "register chat proxy-pilot at claude://claude.ai/chat/abc")
             await router.handle("confirm register")
             assert registry.resolve("build-box").surface is not None

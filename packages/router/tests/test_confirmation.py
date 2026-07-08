@@ -1,4 +1,3 @@
-import pytest
 
 from operator_router.classes import OpClass
 from operator_router.confirmation import ArmedOp, ConfirmationMachine

@@ -66,7 +66,7 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
     async def run_register(m):
         registry.register(Surface(
             name=m["name"], kind=m["kind"], address=m["address"],
-            digest=f"registered via console", profile=profile(),
+            digest="registered via console", profile=profile(),
             registered_at=dt.datetime.now(dt.UTC).isoformat()))
         return f"Registered {m['kind']} surface {m['name']}."
 

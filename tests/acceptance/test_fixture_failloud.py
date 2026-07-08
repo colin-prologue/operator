@@ -1,6 +1,5 @@
 import asyncio
 
-import pytest
 
 
 async def test_setup_failure_surfaces_instead_of_hanging(monkeypatch):
