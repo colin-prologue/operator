@@ -340,6 +340,20 @@ wheels = [
 name = "operator-console"
 version = "0.1.0"
 source = { editable = "packages/console" }
+dependencies = [
+    { name = "mcp" },
+    { name = "operator-registry" },
+    { name = "operator-router" },
+    { name = "operator-switchboard-mcp" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mcp", specifier = "~=1.28.1" },
+    { name = "operator-registry", editable = "packages/registry" },
+    { name = "operator-router", editable = "packages/router" },
+    { name = "operator-switchboard-mcp", editable = "packages/switchboard-mcp" },
+]
 
 [[package]]
 name = "operator-desktop-adapter"
