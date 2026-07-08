@@ -187,3 +187,48 @@ async def test_kill_fuzzy_match_does_not_arm_with_mismatched_label(tmp_path):
     assert "confirm kill" not in reply.lower()
     assert router.machine.state == "IDLE"
     assert router.registry.resolve("build-box").surface is not None
+
+
+async def test_confirm_kill_never_snaps_to_fuzzy_neighbor(tmp_path):
+    """Defect 1: the exact armed target vanishing between arm and confirm
+    must never let execution fuzzy-snap to a same-shaped neighbor -- a
+    Class X op only ever executes against the name it was confirmed
+    under (grammar principle 2)."""
+    router, llm = build_surface_router(tmp_path)
+    registry = router.registry
+    registry.register(Surface(
+        name="build-box", kind="tmux", address="tmux:main", digest="d",
+        profile="personal", registered_at="2026-07-08T00:00:00+00:00"))
+    registry.register(Surface(
+        name="build-box2", kind="tmux", address="tmux:main2", digest="d",
+        profile="personal", registered_at="2026-07-08T00:00:00+00:00"))
+
+    reply = await router.handle("kill build-box")
+    assert "confirm kill build-box" in reply
+
+    # out-of-band: the exact target vanishes, leaving a fuzzy neighbor
+    (tmp_path / "registry" / "surfaces" / "build-box.json").unlink()
+
+    reply = await router.handle("confirm kill build-box")
+    assert "nothing killed" in reply.lower()
+
+    # the fuzzy neighbor survives
+    assert registry.resolve("build-box2").surface is not None
+
+
+async def test_kill_uppercase_surface_arms_and_executes(tmp_path):
+    """Defect 2: registered names may carry uppercase (e.g. via `register
+    tmux MyBot at ...`); kill must arm and execute against them instead of
+    looping on a mismatched no-arm instruction."""
+    router, llm = build_surface_router(tmp_path)
+    registry = router.registry
+    registry.register(Surface(
+        name="MyBot", kind="tmux", address="tmux:main", digest="d",
+        profile="personal", registered_at="2026-07-08T00:00:00+00:00"))
+
+    reply = await router.handle("kill MyBot")
+    assert "confirm kill MyBot" in reply
+
+    reply = await router.handle("confirm kill MyBot")
+    assert "killed" in reply.lower()
+    assert registry.list() == []

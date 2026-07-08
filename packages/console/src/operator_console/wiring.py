@@ -89,43 +89,61 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         # mirrors SurfaceRegistry.resolve's own spoken-style normalization
         return name.strip().lower().replace(" ", "-")
 
+    def resolve_kill_target(name: str) -> Surface | None:
+        # Class X may only bind to the exact name it arms under (grammar
+        # principle 2): the resolved surface's name must match the arm-time
+        # normalized name, case-insensitively (registered names may carry
+        # uppercase). Fuzzy neighbors -- and a target that vanished and let
+        # resolve() fall through to an unrelated close match -- never count.
+        res = registry.resolve(name)
+        normalized = normalize_surface_name(name)
+        if res.surface is not None and res.surface.name.lower() == normalized:
+            return res.surface
+        return None
+
     async def run_kill(m, token):
-        # double-check existence: the surface may have been killed
-        # out-of-band between arm and confirm.
-        res = registry.resolve(m["name"])
-        if res.surface is None:
-            return f"No surface named {m['name']!r} is registered."
-        registry.kill(res.surface.name)
-        return f"Killed surface {res.surface.name}."
+        # re-resolve at confirm time -- the exact target may have vanished
+        # (or a same-shaped neighbor may now fuzzy-win) out-of-band between
+        # arm and confirm. Only the exact name armed under may be killed;
+        # anything else executes against nothing rather than a neighbor.
+        normalized = normalize_surface_name(m["name"])
+        target = resolve_kill_target(m["name"])
+        if target is None:
+            return f"Surface {normalized!r} is no longer registered — nothing killed."
+        registry.kill(target.name)
+        return f"Killed surface {target.name}."
 
     async def rb_kill(m):
+        target = resolve_kill_target(m["name"])
+        if target is not None:
+            return (f"Killing surface {target.name} — this removes its "
+                    f"registration entirely. Say \"confirm kill {target.name}\".")
         res = registry.resolve(m["name"])
-        normalized = normalize_surface_name(m["name"])
         if res.surface is not None:
-            if res.surface.name == normalized:
-                found = res.surface.name
-                return (f"Killing surface {found} — this removes its "
-                        f"registration entirely. Say \"confirm kill {found}\".")
-            # fuzzy match diverges from the typed name: refuse to arm so
-            # the armed label always names the exact resolved target
-            # (grammar principle 2), and make the user re-issue verbatim.
+            # fuzzy/case-mismatched: refuse to arm so the armed label always
+            # names the exact resolved target (grammar principle 2), and
+            # make the user re-issue verbatim.
             return (f"[no-arm] Did you mean {res.surface.name}? "
                     f"Say \"kill {res.surface.name}\".")
         if res.candidates:
             return "[no-arm] Which one: " + ", ".join(res.candidates) + "?"
         return f"[no-arm] No surface named {m['name']!r} is registered."
 
-    # Class X label carries the target name (grammar: names the operation).
-    # label_for can't itself resolve (it's sync, no registry round-trip
-    # needed): it normalizes the same way SurfaceRegistry.resolve does for
-    # exact/normalized matches, which is exactly the case rb_kill arms for
-    # -- fuzzy matches never arm (see the "[no-arm]" branch above), so the
-    # armed label always names the exact resolved target.
+    def kill_label(m):
+        # Class X label carries the target name (grammar: names the
+        # operation). Mirrors resolve_kill_target so the armed label always
+        # agrees with the readback's instruction -- including resolved
+        # casing (e.g. "kill MyBot", not "kill mybot") -- and falls back to
+        # the normalized typed name only when rb_kill is about to refuse to
+        # arm anyway (that label is discarded, never surfaced).
+        target = resolve_kill_target(m["name"])
+        return f"kill {target.name if target else normalize_surface_name(m['name'])}"
+
     entries.append(CatalogueEntry(
         op_name="surface_kill", label="kill",
         pattern=re.compile(r"^kill (?P<name>[\w-]+)$"),
         readback=rb_kill, run=run_kill, token_fetch=None,
-        label_for=lambda m: f"kill {normalize_surface_name(m['name'])}"))
+        label_for=kill_label))
 
     # --- tickets (over MCP) --------------------------------------------
     async def run_ticket_list(m, token):
