@@ -89,6 +89,18 @@ def test_gate_stamp_exactly_once_and_decision_log(corpus_root):
     assert exc.value.current_revision == 1
 
 
+def test_invalid_token_shape_raises_stale_not_noop(corpus_root):
+    store = CorpusStore(corpus_root, profile="personal")
+    seed_ticket(store)
+    for bad in ("-", "", "rev", "7", "revx"):
+        with pytest.raises(StaleTokenError) as exc:
+            store.ticket_transition("cache-concurrency", "done", bad)
+        assert exc.value.current_revision == 0
+    store.gate_create("voice-loop", state="needs-review")
+    with pytest.raises(StaleTokenError):
+        store.gate_stamp("voice-loop", "approved", "-")
+
+
 def test_corpus_query_searches_decisions_and_corpus(corpus_root):
     store = CorpusStore(corpus_root, profile="personal")
     seed_ticket(store)

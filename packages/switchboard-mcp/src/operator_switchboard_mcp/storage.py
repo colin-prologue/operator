@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -36,6 +37,8 @@ class CorpusStore:
 
     Owns token verify/consume only; classification lives in the router
     (kickoff spec: 'the MCP tool only verifies and consumes tokens')."""
+
+    _TOKEN_RE = re.compile(r"^rev\d+$")
 
     def __init__(self, root: Path, profile: str) -> None:
         if profile not in ("work", "personal"):
@@ -90,6 +93,8 @@ class CorpusStore:
 
     def _apply_token(self, meta: dict, token: str) -> str:
         """Returns 'applied' | 'already_applied'; raises StaleTokenError."""
+        if not self._TOKEN_RE.match(token or ""):
+            raise StaleTokenError(meta["revision"])
         current = f"rev{meta['revision']}"
         if token == current:
             return "applied"
