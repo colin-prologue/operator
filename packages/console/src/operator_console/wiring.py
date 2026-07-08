@@ -180,13 +180,16 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         # of being silently re-applied against the current revision.
         result = await bridge.call("ticket_transition", {
             "name": m["name"], "to_lane": m["lane"], "token": token})
-        if result.get("status") == "applied":
+        status = result.get("status")
+        if status == "applied":
             return f"Done — {m['name']} is in {m['lane']}."
-        if result.get("status") == "already_applied":
+        if status == "already_applied":
             return f"Already applied — {m['name']} was moved earlier."
-        return (f"The ticket moved to revision "
-                f"{result.get('current_revision')} since the read-back — "
-                f"want a fresh read-back?")
+        if status == "stale_token":
+            return (f"The ticket moved to revision "
+                    f"{result['current_revision']} since the read-back — "
+                    f"want a fresh read-back?")
+        return f"That didn't apply: {result.get('message', result)}"
 
     add("ticket_transition", "move",
         r"^move (?P<name>[\w-]+) to (?P<lane>[\w-]+)$",
@@ -197,9 +200,11 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
                 f"“{m['body'][:80]}”. Say \"confirm comment\".")
 
     async def run_comment(m, token):
-        await bridge.call("ticket_comment",
-                          {"name": m["name"], "body": m["body"]})
-        return f"Comment attached to {m['name']}."
+        result = await bridge.call("ticket_comment",
+                                   {"name": m["name"], "body": m["body"]})
+        if result.get("status") == "applied":
+            return f"Comment attached to {m['name']}."
+        return f"That didn't apply: {result.get('message', result)}"
 
     add("ticket_comment", "comment",
         r"^comment on (?P<name>[\w-]+): (?P<body>.+)$",
@@ -231,14 +236,17 @@ def build_catalogue(bridge: McpBridge, registry: SurfaceRegistry,
         # being silently re-applied against the current revision.
         result = await bridge.call("gate_stamp", {
             "name": m["name"], "state": state, "token": token})
-        if result.get("status") == "applied":
+        status = result.get("status")
+        if status == "applied":
             return (f"Stamped. {m['name']} {state} at revision "
                     f"{result['revision']}.")
-        if result.get("status") == "already_applied":
+        if status == "already_applied":
             return "Already applied at the current revision."
-        return (f"Hold on — the gate moved to revision "
-                f"{result.get('current_revision')}. Want the updated "
-                f"read-back?")
+        if status == "stale_token":
+            return (f"Hold on — the gate moved to revision "
+                    f"{result['current_revision']}. Want the updated "
+                    f"read-back?")
+        return f"That didn't apply: {result.get('message', result)}"
 
     # gate label is dynamic: "gate <name>" (grammar: confirm gate <name>)
     entries.append(CatalogueEntry(

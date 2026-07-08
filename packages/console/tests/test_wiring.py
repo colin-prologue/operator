@@ -142,6 +142,72 @@ async def test_confirm_after_out_of_band_move_aborts_stale(corpus_root):
             assert t["revision"] == 1
 
 
+async def test_move_to_unknown_lane_surfaces_the_error(corpus_root):
+    """Codex finding: a structured {status: error} response (e.g. moving
+    into a lane that doesn't exist) must never fall through the stale-token
+    branch -- 'revision None ... fresh read-back' can never fix a bad lane
+    name. The server's own error message must be surfaced instead."""
+    CorpusStore(corpus_root, profile="personal").ticket_create(
+        "cache-concurrency", "Investigate the cache race.")
+
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "operator_switchboard_mcp",
+              "--root", str(corpus_root), "--profile", "personal"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            bridge = McpBridge(session)
+            registry = SurfaceRegistry(corpus_root)
+            opreg = OperationRegistry()
+            seed_operation_classes(opreg)
+            llm = StubLLM()
+            router = Router(registry=registry, opreg=opreg,
+                            machine=ConfirmationMachine(), catalogue=[],
+                            llm=llm,
+                            turnlog=TurnLog(corpus_root / "logs" / "turns.jsonl"))
+            router.catalogue.extend(build_catalogue(bridge, registry, router.context))
+
+            rb = await router.handle("move cache-concurrency to review")
+            assert "confirm move" in rb
+            reply = await router.handle("confirm move")
+            assert "unknown lane" in reply.lower()
+            assert "revision None" not in reply
+            assert "fresh read-back" not in reply.lower()
+
+
+async def test_comment_on_vanished_ticket_reports_failure(corpus_root):
+    """Codex finding: run_comment must check the bridge result instead of
+    unconditionally reporting success -- an unknown ticket (e.g. removed
+    between read-back and confirm) must surface the server's error, not a
+    false 'Comment attached'."""
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "operator_switchboard_mcp",
+              "--root", str(corpus_root), "--profile", "personal"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            bridge = McpBridge(session)
+            registry = SurfaceRegistry(corpus_root)
+            opreg = OperationRegistry()
+            seed_operation_classes(opreg)
+            llm = StubLLM()
+            router = Router(registry=registry, opreg=opreg,
+                            machine=ConfirmationMachine(), catalogue=[],
+                            llm=llm,
+                            turnlog=TurnLog(corpus_root / "logs" / "turns.jsonl"))
+            router.catalogue.extend(build_catalogue(bridge, registry, router.context))
+
+            rb = await router.handle("comment on ghost: hi")
+            assert "confirm comment" in rb
+            reply = await router.handle("confirm comment")
+            assert "attached" not in reply.lower()
+            assert "no ticket" in reply.lower()
+
+
 async def test_kill_arms_with_resolved_label_and_executes(tmp_path):
     router, llm = build_surface_router(tmp_path)
     router.registry.register(Surface(
