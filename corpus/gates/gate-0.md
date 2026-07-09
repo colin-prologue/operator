@@ -1,8 +1,8 @@
 ---
 name: gate-0
-state: needs-review
-revision: 0
-last_applied_token: -
+state: approved
+revision: 1
+last_applied_token: rev0
 profile: personal
 ---
 
